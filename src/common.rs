@@ -65,6 +65,14 @@ pub const DEFAULT_KEEP_ALIVE: i32 = 60_000;
 
 const MIN_VER_MULTI_UI_SESSION: &str = "1.2.4";
 
+// Company-managed connection settings.  These are kept in the overwrite map so
+// every installation uses the company's RustDesk server without any per-device
+// setup or an accidental fallback to the public RustDesk service.
+const COMPANY_RENDEZVOUS_SERVER: &str = "39.185.236.111";
+const COMPANY_RELAY_SERVER: &str = "39.185.236.111";
+const COMPANY_API_SERVER: &str = "http://39.185.236.111:21114";
+const COMPANY_SERVER_KEY: &str = "ilqVqweUhcUFdiw2o73tbaGLJAGU3cV0ef6jYbVCgxA=";
+
 pub mod input {
     pub const MOUSE_TYPE_MOVE: i32 = 0;
     pub const MOUSE_TYPE_DOWN: i32 = 1;
@@ -122,6 +130,8 @@ impl Drop for SimpleCallOnReturn {
 }
 
 pub fn global_init() -> bool {
+    apply_company_network_defaults();
+
     #[cfg(target_os = "linux")]
     {
         if !crate::platform::linux::is_x11() {
@@ -132,6 +142,17 @@ pub fn global_init() -> bool {
 }
 
 pub fn global_clean() {}
+
+fn apply_company_network_defaults() {
+    let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
+    settings.insert(
+        keys::OPTION_CUSTOM_RENDEZVOUS_SERVER.to_owned(),
+        COMPANY_RENDEZVOUS_SERVER.to_owned(),
+    );
+    settings.insert("relay-server".to_owned(), COMPANY_RELAY_SERVER.to_owned());
+    settings.insert(keys::OPTION_API_SERVER.to_owned(), COMPANY_API_SERVER.to_owned());
+    settings.insert(keys::OPTION_KEY.to_owned(), COMPANY_SERVER_KEY.to_owned());
+}
 
 #[inline]
 pub fn set_server_running(b: bool) {

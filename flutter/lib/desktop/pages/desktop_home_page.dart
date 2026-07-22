@@ -20,6 +20,7 @@ import 'package:flutter_hbb/plugin/ui_manager.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
@@ -34,6 +35,85 @@ class DesktopHomePage extends StatefulWidget {
 }
 
 const borderColor = Color(0xFF2F65BA);
+const _feishuWebhook =
+    'https://open.feishu.cn/open-apis/bot/v2/hook/f725e127-4da2-41ec-b63b-01f0aa386971';
+
+class _QunqingBrandHeader extends StatelessWidget {
+  const _QunqingBrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final showServerBadge = MediaQuery.sizeOf(context).width >= 780;
+    return Container(
+      height: 88,
+      padding: const EdgeInsets.symmetric(horizontal: 26),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFF062A5C), Color(0xFF0D4B8E)],
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Image.asset('assets/qunqing_logo.png', fit: BoxFit.contain),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '群青智能远程协助',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  '安全连接 · 专属支持',
+                  style: TextStyle(color: Color(0xFFBCD7F5), fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          if (showServerBadge)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0x1FFFFFFF),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0x4DFFFFFF)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_user_outlined,
+                      color: Color(0xFFB9E7FF), size: 16),
+                  SizedBox(width: 6),
+                  Text('公司专属服务器',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class _DesktopHomePageState extends State<DesktopHomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
@@ -53,6 +133,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
   final RxBool _editHover = false.obs;
   final RxBool _block = false.obs;
+  bool _isCallingAssistance = false;
 
   final GlobalKey _childKey = GlobalKey();
 
@@ -61,12 +142,19 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     super.build(context);
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
-        child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
       children: [
-        buildLeftPane(context),
-        if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        const _QunqingBrandHeader(),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              buildLeftPane(context),
+              if (!isIncomingOnly) const VerticalDivider(width: 1),
+              if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+            ],
+          ),
+        ),
       ],
     ));
   }
@@ -93,6 +181,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
+      if (!isOutgoingOnly) buildAssistanceButton(context),
       FutureBuilder<Widget>(
         future: Future.value(
             Obx(() => buildHelpCards(stateGlobal.updateUrl.value))),
@@ -386,6 +475,139 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ],
       ),
     );
+  }
+
+  Widget buildAssistanceButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: SizedBox(
+        width: double.infinity,
+        height: 40,
+        child: FilledButton.icon(
+          onPressed: _isCallingAssistance ? null : _callForAssistance,
+          icon: _isCallingAssistance
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.support_agent_rounded, size: 19),
+          label: Text(_isCallingAssistance ? '正在发送…' : '呼叫协助'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF126DC5),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(9),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _callForAssistance() async {
+    final deviceId =
+        gFFI.serverModel.serverId.text.replaceAll(' ', '').trim();
+    if (deviceId.isEmpty || deviceId == translate('Generating ...')) {
+      showToast('设备 ID 正在生成，请稍后再试');
+      return;
+    }
+
+    final rawPassword = gFFI.serverModel.serverPasswd.text.trim();
+    final password = rawPassword.isEmpty ||
+            rawPassword == '-' ||
+            rawPassword == translate('Generating ...')
+        ? '当前未生成一次性密码'
+        : rawPassword;
+    final now = DateTime.now();
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final requestedAt =
+        '${now.year}-${twoDigits(now.month)}-${twoDigits(now.day)} '
+        '${twoDigits(now.hour)}:${twoDigits(now.minute)}:${twoDigits(now.second)}';
+
+    if (mounted) {
+      setState(() => _isCallingAssistance = true);
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_feishuWebhook),
+            headers: const {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({
+              'msg_type': 'interactive',
+              'card': {
+                'config': {'wide_screen_mode': true},
+                'header': {
+                  'title': {
+                    'tag': 'plain_text',
+                    'content': 'RustDesk远程协助 - $deviceId 请求支持',
+                  },
+                  'template': 'blue',
+                },
+                'elements': [
+                  {
+                    'tag': 'div',
+                    'fields': [
+                      {
+                        'is_short': false,
+                        'text': {
+                          'tag': 'lark_md',
+                          'content': '**设备 ID**\n$deviceId',
+                        },
+                      },
+                      {
+                        'is_short': false,
+                        'text': {
+                          'tag': 'lark_md',
+                          'content': '**一次性密码**\n$password',
+                        },
+                      },
+                      {
+                        'is_short': false,
+                        'text': {
+                          'tag': 'lark_md',
+                          'content': '**呼叫时间**\n$requestedAt',
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    'tag': 'note',
+                    'elements': [
+                      {
+                        'tag': 'plain_text',
+                        'content': '请使用上方 ID 和一次性密码发起远程连接。',
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      final result = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+      final resultCode = result['code'] ?? result['StatusCode'];
+      final succeeded = response.statusCode == 200 &&
+          (resultCode == null || resultCode == 0 || resultCode == '0');
+      if (!succeeded) {
+        throw Exception(result['msg'] ?? result['StatusMessage'] ??
+            '飞书返回 HTTP ${response.statusCode}');
+      }
+      showToast('协助请求已发送，请等待技术支持响应');
+    } catch (error) {
+      showToast('协助请求发送失败，请检查网络后重试');
+      debugPrint('Failed to send Feishu assistance request: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isCallingAssistance = false);
+      }
+    }
   }
 
   buildTip(BuildContext context) {
