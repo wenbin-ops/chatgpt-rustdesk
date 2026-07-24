@@ -1857,11 +1857,7 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.clear_restarting_remote_device();
-        self.force_relay =
-            config::option2bool("force-always-relay", &self.get_option("force-always-relay"))
-                || force_relay
-                || use_ws()
-                || Config::is_proxy();
+        self.force_relay = true; // Hardcoded to always force relay for all connections
         if let Some((real_id, server, key)) = &self.other_server {
             let other_server_key = self.get_option("other-server-key");
             if !other_server_key.is_empty() && key.is_empty() {
